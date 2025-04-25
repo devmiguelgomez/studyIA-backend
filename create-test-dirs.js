@@ -5,6 +5,15 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Verificar si estamos en Vercel
+const isVercel = process.env.VERCEL === '1';
+
+// Si estamos en Vercel, saltamos la creación de directorios
+if (isVercel) {
+  console.log('Ejecutando en Vercel: No se crearán directorios de prueba');
+  process.exit(0); // Salir sin error
+}
+
 // Crear directorios para pruebas de pdf-parse
 const testDataDir = path.join(__dirname, 'test', 'data');
 

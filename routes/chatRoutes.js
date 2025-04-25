@@ -14,13 +14,16 @@ import { checkQuotaAvailable } from '../utils/quotaMonitor.js';
 
 const router = express.Router();
 
+// Verificar si estamos en Vercel
+const isVercel = process.env.VERCEL === '1';
+
 // Configurar almacenamiento para archivos subidos
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadsDir = path.join(__dirname, '../uploads');
 
-// Crear el directorio de uploads si no existe
-if (!fs.existsSync(uploadsDir)) {
+// Crear el directorio de uploads si no existe y no estamos en Vercel
+if (!isVercel && !fs.existsSync(uploadsDir)) {
   try {
     fs.mkdirSync(uploadsDir, { recursive: true });
     console.log(`✅ Directorio de uploads creado desde routes: ${uploadsDir}`);
@@ -32,7 +35,9 @@ if (!fs.existsSync(uploadsDir)) {
 // Configurar multer para subida de archivos
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, uploadsDir);
+    // En Vercel, usar un directorio temporal
+    const destDir = isVercel ? '/tmp' : uploadsDir;
+    cb(null, destDir);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -66,6 +71,13 @@ const upload = multer({
 
 // Ruta para manejar errores de multer
 const uploadMiddleware = (req, res, next) => {
+  // Si estamos en Vercel y la ruta es para subir archivos, rechazar la solicitud
+  if (isVercel && req.path === '/quiz') {
+    return res.status(400).json({
+      error: "La carga de archivos no está disponible en este entorno de despliegue. Por favor, utilice la opción de tema en lugar de subir archivos."
+    });
+  }
+
   const multerSingle = upload.single('document');
   
   multerSingle(req, res, function(err) {

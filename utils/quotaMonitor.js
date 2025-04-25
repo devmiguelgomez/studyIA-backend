@@ -5,10 +5,18 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const quotaLogPath = path.join(__dirname, '../logs/quota.json');
+// Verificar si estamos en Vercel
+const isVercel = process.env.VERCEL === '1';
 
-// Asegurar que el directorio de logs existe
+// En Vercel, usar una ruta temporal para los archivos
+const quotaLogPath = isVercel 
+  ? '/tmp/quota.json' 
+  : path.join(__dirname, '../logs/quota.json');
+
+// Asegurar que el directorio de logs existe (solo si no estamos en Vercel)
 const ensureLogDir = () => {
+  if (isVercel) return; // En Vercel, saltamos la creación de directorios
+  
   const logDir = path.join(__dirname, '../logs');
   if (!fs.existsSync(logDir)) {
     fs.mkdirSync(logDir, { recursive: true });
@@ -32,20 +40,42 @@ const initQuotaLog = () => {
       history: []
     };
     
-    fs.writeFileSync(quotaLogPath, JSON.stringify(initialData, null, 2));
-    return initialData;
+    try {
+      fs.writeFileSync(quotaLogPath, JSON.stringify(initialData, null, 2));
+      return initialData;
+    } catch (error) {
+      console.error(`Error al escribir en ${quotaLogPath}:`, error);
+      return initialData; // Devolver los datos de todos modos para no romper la funcionalidad
+    }
   }
   
-  // Si el archivo existe, actualizamos los valores de cuota para el modelo flash
-  const data = JSON.parse(fs.readFileSync(quotaLogPath, 'utf8'));
-  // Actualizar a los límites del modelo flash si estaban configurados para otro modelo
-  if (data.minuteQuota < 15) {
-    data.minuteQuota = 15;  // Flash tiene mayor cuota por minuto
-    data.dailyQuota = 120;  // Y mayor cuota diaria
-    fs.writeFileSync(quotaLogPath, JSON.stringify(data, null, 2));
+  try {
+    // Si el archivo existe, actualizamos los valores de cuota para el modelo flash
+    const data = JSON.parse(fs.readFileSync(quotaLogPath, 'utf8'));
+    // Actualizar a los límites del modelo flash si estaban configurados para otro modelo
+    if (data.minuteQuota < 15) {
+      data.minuteQuota = 15;  // Flash tiene mayor cuota por minuto
+      data.dailyQuota = 120;  // Y mayor cuota diaria
+      fs.writeFileSync(quotaLogPath, JSON.stringify(data, null, 2));
+    }
+    
+    return data;
+  } catch (error) {
+    console.error(`Error al leer o parsear ${quotaLogPath}:`, error);
+    // Devolver datos iniciales en caso de error
+    const fallbackData = {
+      requestsToday: 0,
+      requestsThisMinute: 0,
+      lastMinuteTimestamp: Date.now(),
+      dailyReset: new Date().toISOString().split('T')[0],
+      minuteQuota: 15,
+      dailyQuota: 120,
+      quotaExceededCount: 0,
+      lastUpdate: new Date().toISOString(),
+      history: []
+    };
+    return fallbackData;
   }
-  
-  return data;
 };
 
 // Registrar una solicitud y verificar si estamos dentro de los límites
@@ -93,7 +123,12 @@ export const trackApiRequest = () => {
   }
   
   // Guardar datos actualizados
-  fs.writeFileSync(quotaLogPath, JSON.stringify(quotaData, null, 2));
+  try {
+    fs.writeFileSync(quotaLogPath, JSON.stringify(quotaData, null, 2));
+  } catch (error) {
+    console.error(`Error al escribir en ${quotaLogPath}:`, error);
+    // Seguir con el flujo, aun si falla la escritura
+  }
   
   return {
     isQuotaExceeded,

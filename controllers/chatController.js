@@ -16,9 +16,12 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Crear el directorio de uploads si no existe
+// Verificar si estamos en Vercel
+const isVercel = process.env.VERCEL === '1';
+
+// Crear el directorio de uploads si no existe (solo si no estamos en Vercel)
 const uploadsDir = path.join(__dirname, '../uploads');
-if (!fs.existsSync(uploadsDir)) {
+if (!isVercel && !fs.existsSync(uploadsDir)) {
   try {
     fs.mkdirSync(uploadsDir, { recursive: true });
     console.log(`✅ Directorio de uploads creado: ${uploadsDir}`);
@@ -181,6 +184,7 @@ const extractTextFromDocument = async (filePath, fileType) => {
     // Intentar eliminar el archivo temporal en caso de error
     try {
       if (fs.existsSync(filePath)) {
+        // En Vercel, la eliminación de archivos puede fallar, así que lo envolvemos en try/catch
         fs.unlinkSync(filePath);
         console.log(`Archivo temporal eliminado: ${filePath}`);
       }
@@ -240,7 +244,7 @@ export const generateQuiz = async (req, res) => {
     let sessionTitle = topic || 'Cuestionario sin título';
     
     // Si hay un documento subido, procesarlo
-    if (req.file) {
+    if (req.file && !isVercel) {
       const filePath = req.file.path;
       const fileType = req.file.mimetype;
       
@@ -252,6 +256,10 @@ export const generateQuiz = async (req, res) => {
         console.error('Error procesando el documento:', error);
         return res.status(400).json({ error: error.message });
       }
+    } else if (req.file && isVercel) {
+      // En Vercel, mostrar mensaje de que la carga de archivos no está disponible en este entorno
+      console.log(`Carga de archivos no soportada en este entorno de despliegue`);
+      return res.status(400).json({ error: "La carga de archivos no está soportada en este entorno. Por favor, utiliza un tema de estudio en lugar de subir documentos." });
     }
     
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });

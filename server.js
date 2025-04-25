@@ -14,12 +14,17 @@ const __dirname = path.dirname(__filename);
 // Cargar variables de entorno
 dotenv.config();
 
-// Verificar y crear directorios necesarios
-const uploadsDir = path.join(__dirname, 'uploads');
-const testDataDir = path.join(__dirname, 'test', 'data');
+// Verificar si estamos en Vercel
+const isVercel = process.env.VERCEL === '1';
 
 // Función para crear directorios
 const createDirectory = (dir) => {
+  // En Vercel, no intentamos crear directorios que no están permitidos
+  if (isVercel) {
+    console.log(`Ejecutando en Vercel: No se creará el directorio ${dir}`);
+    return;
+  }
+
   if (!fs.existsSync(dir)) {
     try {
       fs.mkdirSync(dir, { recursive: true });
@@ -30,18 +35,24 @@ const createDirectory = (dir) => {
   }
 };
 
+// Verificar y crear directorios necesarios (solo si no estamos en Vercel)
+const uploadsDir = path.join(__dirname, 'uploads');
+const testDataDir = path.join(__dirname, 'test', 'data');
+
 // Crear directorios necesarios
 createDirectory(uploadsDir);
 createDirectory(testDataDir);
 
-// Crear archivo PDF de prueba si no existe
-const testPdfPath = path.join(testDataDir, '05-versions-space.pdf');
-if (!fs.existsSync(testPdfPath)) {
-  try {
-    fs.writeFileSync(testPdfPath, '%PDF-1.3\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF');
-    console.log(`✅ Archivo PDF de prueba creado: ${testPdfPath}`);
-  } catch (err) {
-    console.error(`❌ Error creando archivo PDF de prueba:`, err);
+// Crear archivo PDF de prueba si no existe (solo si no estamos en Vercel)
+if (!isVercel) {
+  const testPdfPath = path.join(testDataDir, '05-versions-space.pdf');
+  if (!fs.existsSync(testPdfPath)) {
+    try {
+      fs.writeFileSync(testPdfPath, '%PDF-1.3\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF');
+      console.log(`✅ Archivo PDF de prueba creado: ${testPdfPath}`);
+    } catch (err) {
+      console.error(`❌ Error creando archivo PDF de prueba:`, err);
+    }
   }
 }
 
@@ -93,11 +104,13 @@ app.use('/api/chat', chatRoutes);
 app.get('/', (req, res) => {
   res.json({ 
     message: 'API de Study Buddy funcionando correctamente',
-    status: 'Gemini configurado correctamente'
+    status: 'Gemini configurado correctamente',
+    environment: isVercel ? 'Vercel' : 'Desarrollo local'
   });
 });
 
 // Iniciar el servidor
 app.listen(PORT, () => {
   console.log(`🚀 Servidor corriendo en el puerto ${PORT}`);
+  console.log(`🌎 Entorno: ${isVercel ? 'Vercel (producción)' : 'Desarrollo local'}`);
 });
