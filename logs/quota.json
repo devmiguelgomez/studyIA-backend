@@ -1,0 +1,11 @@
+{
+  "requestsToday": 20,
+  "requestsThisMinute": 1,
+  "lastMinuteTimestamp": 1745554640639,
+  "dailyReset": "2025-04-25",
+  "minuteQuota": 60,
+  "dailyQuota": 120,
+  "quotaExceededCount": 0,
+  "lastUpdate": "2025-04-25T04:17:20.639Z",
+  "history": []
+}
