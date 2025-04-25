@@ -11,12 +11,14 @@ import {
   deleteSession
 } from '../controllers/chatController.js';
 import { checkQuotaAvailable } from '../utils/quotaMonitor.js';
+import { isVercel, isVercelPath, getUploadPath, getSafeTempPath } from '../utils/environmentHelper.js';
 
 const router = express.Router();
 
-// Verificar si estamos en Vercel
-const isVercel = process.env.VERCEL === '1';
-console.log(`Entorno detectado: ${isVercel ? 'Vercel (producción)' : 'Desarrollo local'}`);
+// Verificación mejorada del entorno Vercel
+const vercelEnvironment = isVercel() || process.cwd().includes('/var/task');
+console.log(`Entorno detectado por chatRoutes: ${vercelEnvironment ? 'Vercel (producción)' : 'Desarrollo local'}`);
+console.log(`Directorio actual: ${process.cwd()}`);
 
 // Configurar almacenamiento para archivos subidos
 const __filename = fileURLToPath(import.meta.url);
@@ -24,11 +26,11 @@ const __dirname = path.dirname(__filename);
 const uploadsDir = path.join(__dirname, '../uploads');
 const tempDir = '/tmp';
 
-console.log(`Directorio de uploads configurado: ${uploadsDir}`);
-console.log(`Directorio temporal disponible: ${tempDir}`);
+console.log(`Directorio de uploads: ${uploadsDir}`);
+console.log(`Directorio temporal: ${tempDir}`);
 
 // Crear el directorio de uploads si no existe y no estamos en Vercel
-if (!isVercel && !fs.existsSync(uploadsDir)) {
+if (!vercelEnvironment && !fs.existsSync(uploadsDir)) {
   try {
     fs.mkdirSync(uploadsDir, { recursive: true });
     console.log(`✅ Directorio de uploads creado desde routes: ${uploadsDir}`);
@@ -40,9 +42,33 @@ if (!isVercel && !fs.existsSync(uploadsDir)) {
 // Configurar multer para subida de archivos
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    // En Vercel, usar SIEMPRE el directorio temporal
-    const destDir = isVercel ? tempDir : uploadsDir;
-    console.log(`Usando directorio para upload: ${destDir} (isVercel: ${isVercel})`);
+    // Siempre usar /tmp si estamos en un entorno que parece ser Vercel
+    const isVercelEnv = vercelEnvironment || isVercelPath(process.cwd());
+    const destDir = isVercelEnv ? tempDir : uploadsDir;
+    console.log(`Usando directorio para upload: ${destDir} (isVercelEnv: ${isVercelEnv})`);
+    
+    // Verificar si el directorio existe antes de usarlo
+    if (!fs.existsSync(destDir)) {
+      try {
+        fs.mkdirSync(destDir, { recursive: true });
+        console.log(`Directorio de destino creado: ${destDir}`);
+      } catch (mkdirErr) {
+        console.error(`Error al crear directorio de destino: ${mkdirErr.message}`);
+        // En caso de error, intentar usar /tmp como fallback
+        if (destDir !== tempDir) {
+          console.log(`Intentando usar directorio temporal ${tempDir} como alternativa`);
+          if (!fs.existsSync(tempDir)) {
+            try {
+              fs.mkdirSync(tempDir, { recursive: true });
+            } catch (tempErr) {
+              console.error(`Error al crear directorio temporal: ${tempErr.message}`);
+            }
+          }
+          return cb(null, tempDir);
+        }
+      }
+    }
+    
     cb(null, destDir);
   },
   filename: (req, file, cb) => {
@@ -79,11 +105,14 @@ const upload = multer({
 
 // Ruta para manejar errores de multer
 const uploadMiddleware = (req, res, next) => {
-  console.log(`Procesando solicitud de upload, isVercel=${isVercel}, ruta=${req.path}`);
+  console.log(`Procesando solicitud de upload, vercelEnvironment=${vercelEnvironment}, ruta=${req.path}`);
+  console.log(`Directorio actual: ${process.cwd()}`);
   
-  // No rechazamos solicitudes en Vercel, solo mostramos advertencia
-  if (isVercel) {
-    console.log('Advertencia: Subida de archivos en entorno Vercel detectada');
+  // Si la ruta parece de Vercel pero no hemos detectado la variable de entorno
+  if (!vercelEnvironment && process.cwd().includes('/var/task')) {
+    console.log('⚠️ Advertencia: Detectado entorno similar a Vercel pero variable VERCEL no configurada');
+    console.log('Forzando uso de directorio temporal /tmp');
+    process.env.VERCEL = '1'; // Forzar el flag de Vercel para el resto de la aplicación
   }
 
   const multerSingle = upload.single('document');
@@ -96,6 +125,16 @@ const uploadMiddleware = (req, res, next) => {
       });
     } else if (err) {
       console.error(`Error en uploadMiddleware: ${err.message}`);
+      
+      // Si el error es de tipo "no such file or directory" en /var/task
+      if (err.code === 'ENOENT' && err.message.includes('/var/task')) {
+        console.log('Detectado error de archivo en entorno Vercel - ajustando configuración...');
+        // En este punto, informamos al usuario que hay una limitación
+        return res.status(400).json({
+          error: "La carga de archivos no está disponible en este entorno. Por favor, utilice el campo de tema o texto en lugar de subir archivos."
+        });
+      }
+      
       return res.status(500).json({
         error: `Error al procesar el archivo: ${err.message}`
       });

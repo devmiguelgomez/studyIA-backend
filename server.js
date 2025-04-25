@@ -6,8 +6,9 @@ import { router as chatRoutes } from './routes/chatRoutes.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-// Importar el diagnóstico
+// Importar utilidades
 import { runDiagnostic } from './utils/vercelDiagnostic.js';
+import { isVercel } from './utils/environmentHelper.js';
 
 // Obtener el directorio actual
 const __filename = fileURLToPath(import.meta.url);
@@ -16,12 +17,18 @@ const __dirname = path.dirname(__filename);
 // Cargar variables de entorno
 dotenv.config();
 
-// Verificar si estamos en Vercel
-const isVercel = process.env.VERCEL === '1';
-console.log(`Iniciando servidor en entorno: ${isVercel ? 'Vercel (producción)' : 'Desarrollo local'}`);
+// Verificar si estamos en Vercel (mejorando la detección)
+const vercelEnvironment = isVercel() || process.cwd().includes('/var/task');
+if (process.cwd().includes('/var/task') && process.env.VERCEL !== '1') {
+  console.log('⚠️ Detectado entorno Vercel pero variable VERCEL no configurada. Ajustando...');
+  process.env.VERCEL = '1';  // Configurar la variable de entorno para el resto de la aplicación
+}
+
+console.log(`Iniciando servidor en entorno: ${vercelEnvironment ? 'Vercel (producción)' : 'Desarrollo local'}`);
+console.log(`Directorio actual: ${process.cwd()}`);
 
 // Ejecutar diagnóstico al iniciar
-if (isVercel) {
+if (vercelEnvironment) {
   console.log('Ejecutando diagnóstico de sistemas de archivos en Vercel...');
   runDiagnostic();
   console.log('Diagnóstico completado');
@@ -30,7 +37,7 @@ if (isVercel) {
 // Función para crear directorios
 const createDirectory = (dir) => {
   // En Vercel, no intentamos crear directorios que no están permitidos
-  if (isVercel) {
+  if (vercelEnvironment) {
     console.log(`Ejecutando en Vercel: No se creará el directorio ${dir}`);
     return;
   }
@@ -53,12 +60,26 @@ const testDataDir = path.join(__dirname, 'test', 'data');
 console.log(`Directorio de uploads configurado en: ${uploadsDir}`);
 console.log(`Directorio temporal disponible en: ${tempDir}`);
 
-// Crear directorios necesarios
-createDirectory(uploadsDir);
-createDirectory(testDataDir);
+// Intentar crear el directorio temporal en Vercel (puede fallar, pero es seguro intentarlo)
+if (vercelEnvironment) {
+  try {
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+      console.log(`✅ Directorio temporal creado: ${tempDir}`);
+    }
+  } catch (err) {
+    console.error(`No se pudo crear directorio temporal: ${err.message}`);
+  }
+}
+
+// Crear directorios necesarios solo en entorno local
+if (!vercelEnvironment) {
+  createDirectory(uploadsDir);
+  createDirectory(testDataDir);
+}
 
 // Crear archivo PDF de prueba si no existe (solo si no estamos en Vercel)
-if (!isVercel) {
+if (!vercelEnvironment) {
   const testPdfPath = path.join(testDataDir, '05-versions-space.pdf');
   if (!fs.existsSync(testPdfPath)) {
     try {
@@ -116,12 +137,13 @@ app.use('/api/chat', chatRoutes);
 
 // Ruta para probar el servidor
 app.get('/', (req, res) => {
-  const diagnosticInfo = isVercel ? runDiagnostic() : { message: 'Diagnóstico solo disponible en Vercel' };
+  const diagnosticInfo = vercelEnvironment ? runDiagnostic() : { message: 'Diagnóstico solo disponible en Vercel' };
   
   res.json({ 
     message: 'API de Study Buddy funcionando correctamente',
     status: 'Gemini configurado correctamente',
-    environment: isVercel ? 'Vercel' : 'Desarrollo local',
+    environment: vercelEnvironment ? 'Vercel' : 'Desarrollo local',
+    cwd: process.cwd(),
     diagnostico: diagnosticInfo
   });
 });
@@ -129,5 +151,5 @@ app.get('/', (req, res) => {
 // Iniciar el servidor
 app.listen(PORT, () => {
   console.log(`🚀 Servidor corriendo en el puerto ${PORT}`);
-  console.log(`🌎 Entorno: ${isVercel ? 'Vercel (producción)' : 'Desarrollo local'}`);
+  console.log(`🌎 Entorno: ${vercelEnvironment ? 'Vercel (producción)' : 'Desarrollo local'}`);
 });

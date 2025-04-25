@@ -10,20 +10,22 @@ import { createWorker } from 'tesseract.js';
 import mammoth from 'mammoth';
 import pdfParse from 'pdf-parse';
 import { trackApiRequest, checkQuotaAvailable } from '../utils/quotaMonitor.js';
+import { isVercel, isVercelPath } from '../utils/environmentHelper.js';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Verificar si estamos en Vercel
-const isVercel = process.env.VERCEL === '1';
-console.log(`ChatController - Entorno detectado: ${isVercel ? 'Vercel' : 'Desarrollo local'}`);
+// Verificación mejorada del entorno Vercel
+const vercelEnvironment = isVercel() || process.cwd().includes('/var/task');
+console.log(`ChatController - Entorno detectado: ${vercelEnvironment ? 'Vercel' : 'Desarrollo local'}`);
+console.log(`ChatController - Directorio actual: ${process.cwd()}`);
 
 // Crear el directorio de uploads si no existe (solo si no estamos en Vercel)
 const uploadsDir = path.join(__dirname, '../uploads');
 const tempDir = '/tmp';
-if (!isVercel && !fs.existsSync(uploadsDir)) {
+if (!vercelEnvironment && !fs.existsSync(uploadsDir)) {
   try {
     fs.mkdirSync(uploadsDir, { recursive: true });
     console.log(`✅ Directorio de uploads creado: ${uploadsDir}`);
@@ -140,10 +142,16 @@ const extractTextFromDocument = async (filePath, fileType) => {
   try {
     console.log(`Verificando existencia de archivo en: ${filePath}`);
     
+    // Verificar si estamos en Vercel y el archivo no está en /tmp
+    if ((vercelEnvironment || isVercelPath(filePath)) && !filePath.startsWith('/tmp')) {
+      console.log(`Ruta de archivo incompatible con Vercel: ${filePath}`);
+      throw new Error(`Ruta de archivo no accesible en este entorno. Por favor use el campo de tema o texto.`);
+    }
+    
     // Verificar que el archivo existe
     if (!fs.existsSync(filePath)) {
       console.error(`Archivo no encontrado en: ${filePath}`);
-      throw new Error(`El archivo no existe en la ruta: ${filePath}. Verifique que la ruta es correcta.`);
+      throw new Error(`El archivo no existe en la ruta especificada. Verifique que la ruta es correcta.`);
     }
     
     console.log(`Archivo encontrado, procediendo a extraer texto...`);
@@ -257,11 +265,20 @@ export const generateQuiz = async (req, res) => {
       const filePath = req.file.path;
       const fileType = req.file.mimetype;
       
+      // Verificar si la ruta es válida para el entorno actual
+      const isVercelEnv = vercelEnvironment || isVercelPath(filePath);
+      if (isVercelEnv && !filePath.startsWith('/tmp')) {
+        console.log(`Detectada ruta incompatible con Vercel: ${filePath}`);
+        return res.status(400).json({ 
+          error: "La carga de archivos no está disponible en este entorno. Por favor, utilice el campo de tema o texto."
+        });
+      }
+      
       console.log(`Documento subido:`, {
         filePath,
         fileType,
         exists: fs.existsSync(filePath),
-        isVercel
+        isVercelEnv
       });
       
       try {

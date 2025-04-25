@@ -2,8 +2,20 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// Detectar si estamos en Vercel
-export const isVercel = process.env.VERCEL === '1';
+// Mejorar la detección de Vercel usando múltiples métodos
+export const isVercel = () => {
+  // Verificación principal - variable de entorno configurada en Vercel
+  if (process.env.VERCEL === '1') return true;
+  
+  // Verificación secundaria - rutas específicas de Vercel
+  const currentDir = process.cwd();
+  if (currentDir.includes('/var/task')) return true;
+  
+  // Verificación adicional - variables de entorno de AWS Lambda (usado por Vercel)
+  if (process.env.AWS_LAMBDA_FUNCTION_NAME) return true;
+  
+  return false;
+};
 
 // Obtener ruta base de la aplicación
 export const getAppRoot = () => {
@@ -14,24 +26,42 @@ export const getAppRoot = () => {
 
 // Obtener la ruta adecuada para guardar archivos
 export const getUploadPath = () => {
-  return isVercel ? '/tmp' : path.join(getAppRoot(), 'uploads');
+  return isVercel() ? '/tmp' : path.join(getAppRoot(), 'uploads');
+};
+
+// Verificar si una ruta parece estar en un entorno Vercel
+export const isVercelPath = (filePath) => {
+  return filePath.includes('/var/task') || filePath.includes('/var/runtime');
 };
 
 // Garantizar que un directorio existe (solo en entorno local)
 export const ensureDirectoryExists = (dirPath) => {
-  if (isVercel) {
-    console.log(`Ejecutando en Vercel: No se creará el directorio ${dirPath}`);
-    return;
+  // Si parece un entorno Vercel (aunque no lo hayamos detectado por otras vías)
+  if (isVercel() || isVercelPath(dirPath)) {
+    console.log(`Detectado entorno Vercel: No se creará el directorio ${dirPath}`);
+    return false;
   }
 
   if (!fs.existsSync(dirPath)) {
     try {
       fs.mkdirSync(dirPath, { recursive: true });
       console.log(`✅ Directorio creado: ${dirPath}`);
+      return true;
     } catch (err) {
       console.error(`❌ Error creando directorio ${dirPath}:`, err);
+      return false;
     }
   }
+  return true;
+};
+
+// Ruta segura para archivos temporales
+export const getSafeTempPath = (filename) => {
+  // Siempre usar /tmp en Vercel o paths que parecen Vercel
+  if (isVercel() || process.cwd().includes('/var/task')) {
+    return path.join('/tmp', filename);
+  }
+  return path.join(getAppRoot(), 'uploads', filename);
 };
 
 // Registrar información de archivo
