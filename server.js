@@ -37,6 +37,7 @@ const createDirectory = (dir) => {
 
 // Verificar y crear directorios necesarios (solo si no estamos en Vercel)
 const uploadsDir = path.join(__dirname, 'uploads');
+const tempDir = '/tmp'; // Directorio temporal para Vercel
 const testDataDir = path.join(__dirname, 'test', 'data');
 
 // Crear directorios necesarios

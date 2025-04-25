@@ -138,14 +138,18 @@ const extractTextFromDocument = async (filePath, fileType) => {
   try {
     // Verificar que el archivo existe
     if (!fs.existsSync(filePath)) {
+      console.error(`Archivo no encontrado en: ${filePath}`);
       throw new Error(`El archivo no existe en la ruta: ${filePath}`);
     }
+    
+    console.log(`Procesando archivo: ${filePath} (${fileType})`);
 
     if (fileType === 'application/pdf') {
       // Extraer texto de PDF
       try {
         const dataBuffer = fs.readFileSync(filePath);
         const pdfData = await pdfParse(dataBuffer);
+        console.log(`PDF procesado: ${pdfData.text.length} caracteres extraídos`);
         return pdfData.text;
       } catch (pdfError) {
         console.error('Error al procesar PDF:', pdfError);
@@ -157,6 +161,7 @@ const extractTextFromDocument = async (filePath, fileType) => {
       try {
         const dataBuffer = fs.readFileSync(filePath);
         const result = await mammoth.extractRawText({ buffer: dataBuffer });
+        console.log(`Documento Word procesado: ${result.value.length} caracteres extraídos`);
         return result.value;
       } catch (wordError) {
         console.error('Error al procesar documento Word:', wordError);
@@ -170,6 +175,7 @@ const extractTextFromDocument = async (filePath, fileType) => {
         await worker.initialize('spa');
         const { data } = await worker.recognize(filePath);
         await worker.terminate();
+        console.log(`Imagen procesada con OCR: ${data.text.length} caracteres extraídos`);
         return data.text;
       } catch (ocrError) {
         console.error('Error al procesar imagen con OCR:', ocrError);
@@ -244,7 +250,7 @@ export const generateQuiz = async (req, res) => {
     let sessionTitle = topic || 'Cuestionario sin título';
     
     // Si hay un documento subido, procesarlo
-    if (req.file && !isVercel) {
+    if (req.file) {
       const filePath = req.file.path;
       const fileType = req.file.mimetype;
       
@@ -256,10 +262,6 @@ export const generateQuiz = async (req, res) => {
         console.error('Error procesando el documento:', error);
         return res.status(400).json({ error: error.message });
       }
-    } else if (req.file && isVercel) {
-      // En Vercel, mostrar mensaje de que la carga de archivos no está disponible en este entorno
-      console.log(`Carga de archivos no soportada en este entorno de despliegue`);
-      return res.status(400).json({ error: "La carga de archivos no está soportada en este entorno. Por favor, utiliza un tema de estudio en lugar de subir documentos." });
     }
     
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });

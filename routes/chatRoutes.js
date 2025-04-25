@@ -37,11 +37,14 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     // En Vercel, usar un directorio temporal
     const destDir = isVercel ? '/tmp' : uploadsDir;
+    console.log(`Usando directorio para uploads: ${destDir}`);
     cb(null, destDir);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+    const filename = file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname);
+    console.log(`Nombre de archivo generado: ${filename}`);
+    cb(null, filename);
   }
 });
 
@@ -73,9 +76,13 @@ const upload = multer({
 const uploadMiddleware = (req, res, next) => {
   // Si estamos en Vercel y la ruta es para subir archivos, rechazar la solicitud
   if (isVercel && req.path === '/quiz') {
-    return res.status(400).json({
-      error: "La carga de archivos no está disponible en este entorno de despliegue. Por favor, utilice la opción de tema en lugar de subir archivos."
-    });
+    console.log('Intento de upload en Vercel detectado');
+    // No rechazamos la solicitud, solo seguimos procesando sin archivo
+    if (!req.body.topic && !req.body.documentContent) {
+      return res.status(400).json({
+        error: "La carga de archivos no está disponible en este entorno de despliegue. Por favor, utilice la opción de tema en lugar de subir archivos."
+      });
+    }
   }
 
   const multerSingle = upload.single('document');
@@ -83,16 +90,21 @@ const uploadMiddleware = (req, res, next) => {
   multerSingle(req, res, function(err) {
     if (err instanceof multer.MulterError) {
       // Error de multer
+      console.error(`Error de Multer: ${err.message}`);
       return res.status(400).json({
         error: `Error al subir el archivo: ${err.message}`
       });
     } else if (err) {
       // Error desconocido
+      console.error(`Error en uploadMiddleware: ${err.message}`);
       return res.status(500).json({
         error: `Error al procesar el archivo: ${err.message}`
       });
     }
     // No hay error, continuar
+    if (req.file) {
+      console.log(`Archivo subido correctamente: ${req.file.path}`);
+    }
     next();
   });
 };
