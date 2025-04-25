@@ -6,6 +6,8 @@ import { router as chatRoutes } from './routes/chatRoutes.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+// Importar el diagnóstico
+import { runDiagnostic } from './utils/vercelDiagnostic.js';
 
 // Obtener el directorio actual
 const __filename = fileURLToPath(import.meta.url);
@@ -16,6 +18,14 @@ dotenv.config();
 
 // Verificar si estamos en Vercel
 const isVercel = process.env.VERCEL === '1';
+console.log(`Iniciando servidor en entorno: ${isVercel ? 'Vercel (producción)' : 'Desarrollo local'}`);
+
+// Ejecutar diagnóstico al iniciar
+if (isVercel) {
+  console.log('Ejecutando diagnóstico de sistemas de archivos en Vercel...');
+  runDiagnostic();
+  console.log('Diagnóstico completado');
+}
 
 // Función para crear directorios
 const createDirectory = (dir) => {
@@ -39,6 +49,9 @@ const createDirectory = (dir) => {
 const uploadsDir = path.join(__dirname, 'uploads');
 const tempDir = '/tmp'; // Directorio temporal para Vercel
 const testDataDir = path.join(__dirname, 'test', 'data');
+
+console.log(`Directorio de uploads configurado en: ${uploadsDir}`);
+console.log(`Directorio temporal disponible en: ${tempDir}`);
 
 // Crear directorios necesarios
 createDirectory(uploadsDir);
@@ -103,10 +116,13 @@ app.use('/api/chat', chatRoutes);
 
 // Ruta para probar el servidor
 app.get('/', (req, res) => {
+  const diagnosticInfo = isVercel ? runDiagnostic() : { message: 'Diagnóstico solo disponible en Vercel' };
+  
   res.json({ 
     message: 'API de Study Buddy funcionando correctamente',
     status: 'Gemini configurado correctamente',
-    environment: isVercel ? 'Vercel' : 'Desarrollo local'
+    environment: isVercel ? 'Vercel' : 'Desarrollo local',
+    diagnostico: diagnosticInfo
   });
 });
 

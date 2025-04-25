@@ -16,11 +16,16 @@ const router = express.Router();
 
 // Verificar si estamos en Vercel
 const isVercel = process.env.VERCEL === '1';
+console.log(`Entorno detectado: ${isVercel ? 'Vercel (producción)' : 'Desarrollo local'}`);
 
 // Configurar almacenamiento para archivos subidos
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadsDir = path.join(__dirname, '../uploads');
+const tempDir = '/tmp';
+
+console.log(`Directorio de uploads configurado: ${uploadsDir}`);
+console.log(`Directorio temporal disponible: ${tempDir}`);
 
 // Crear el directorio de uploads si no existe y no estamos en Vercel
 if (!isVercel && !fs.existsSync(uploadsDir)) {
@@ -35,9 +40,9 @@ if (!isVercel && !fs.existsSync(uploadsDir)) {
 // Configurar multer para subida de archivos
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    // En Vercel, usar un directorio temporal
-    const destDir = isVercel ? '/tmp' : uploadsDir;
-    console.log(`Usando directorio para uploads: ${destDir}`);
+    // En Vercel, usar SIEMPRE el directorio temporal
+    const destDir = isVercel ? tempDir : uploadsDir;
+    console.log(`Usando directorio para upload: ${destDir} (isVercel: ${isVercel})`);
     cb(null, destDir);
   },
   filename: (req, file, cb) => {
@@ -74,36 +79,36 @@ const upload = multer({
 
 // Ruta para manejar errores de multer
 const uploadMiddleware = (req, res, next) => {
-  // Si estamos en Vercel y la ruta es para subir archivos, rechazar la solicitud
-  if (isVercel && req.path === '/quiz') {
-    console.log('Intento de upload en Vercel detectado');
-    // No rechazamos la solicitud, solo seguimos procesando sin archivo
-    if (!req.body.topic && !req.body.documentContent) {
-      return res.status(400).json({
-        error: "La carga de archivos no está disponible en este entorno de despliegue. Por favor, utilice la opción de tema en lugar de subir archivos."
-      });
-    }
+  console.log(`Procesando solicitud de upload, isVercel=${isVercel}, ruta=${req.path}`);
+  
+  // No rechazamos solicitudes en Vercel, solo mostramos advertencia
+  if (isVercel) {
+    console.log('Advertencia: Subida de archivos en entorno Vercel detectada');
   }
 
   const multerSingle = upload.single('document');
   
   multerSingle(req, res, function(err) {
     if (err instanceof multer.MulterError) {
-      // Error de multer
       console.error(`Error de Multer: ${err.message}`);
       return res.status(400).json({
         error: `Error al subir el archivo: ${err.message}`
       });
     } else if (err) {
-      // Error desconocido
       console.error(`Error en uploadMiddleware: ${err.message}`);
       return res.status(500).json({
         error: `Error al procesar el archivo: ${err.message}`
       });
     }
+    
     // No hay error, continuar
     if (req.file) {
-      console.log(`Archivo subido correctamente: ${req.file.path}`);
+      console.log(`Archivo subido correctamente:`, {
+        filename: req.file.filename,
+        path: req.file.path,
+        mimetype: req.file.mimetype,
+        size: req.file.size
+      });
     }
     next();
   });

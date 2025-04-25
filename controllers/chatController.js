@@ -18,9 +18,11 @@ const __dirname = path.dirname(__filename);
 
 // Verificar si estamos en Vercel
 const isVercel = process.env.VERCEL === '1';
+console.log(`ChatController - Entorno detectado: ${isVercel ? 'Vercel' : 'Desarrollo local'}`);
 
 // Crear el directorio de uploads si no existe (solo si no estamos en Vercel)
 const uploadsDir = path.join(__dirname, '../uploads');
+const tempDir = '/tmp';
 if (!isVercel && !fs.existsSync(uploadsDir)) {
   try {
     fs.mkdirSync(uploadsDir, { recursive: true });
@@ -136,13 +138,15 @@ const rateLimiter = {
 // Función para extraer texto de diferentes tipos de documentos
 const extractTextFromDocument = async (filePath, fileType) => {
   try {
+    console.log(`Verificando existencia de archivo en: ${filePath}`);
+    
     // Verificar que el archivo existe
     if (!fs.existsSync(filePath)) {
       console.error(`Archivo no encontrado en: ${filePath}`);
-      throw new Error(`El archivo no existe en la ruta: ${filePath}`);
+      throw new Error(`El archivo no existe en la ruta: ${filePath}. Verifique que la ruta es correcta.`);
     }
     
-    console.log(`Procesando archivo: ${filePath} (${fileType})`);
+    console.log(`Archivo encontrado, procediendo a extraer texto...`);
 
     if (fileType === 'application/pdf') {
       // Extraer texto de PDF
@@ -187,10 +191,9 @@ const extractTextFromDocument = async (filePath, fileType) => {
     console.error('Error al extraer texto del documento:', error);
     throw new Error(`No se pudo procesar el documento: ${error.message}`);
   } finally {
-    // Intentar eliminar el archivo temporal en caso de error
     try {
       if (fs.existsSync(filePath)) {
-        // En Vercel, la eliminación de archivos puede fallar, así que lo envolvemos en try/catch
+        console.log(`Intentando eliminar archivo temporal: ${filePath}`);
         fs.unlinkSync(filePath);
         console.log(`Archivo temporal eliminado: ${filePath}`);
       }
@@ -253,6 +256,13 @@ export const generateQuiz = async (req, res) => {
     if (req.file) {
       const filePath = req.file.path;
       const fileType = req.file.mimetype;
+      
+      console.log(`Documento subido:`, {
+        filePath,
+        fileType,
+        exists: fs.existsSync(filePath),
+        isVercel
+      });
       
       try {
         console.log(`Procesando documento: ${filePath} (${fileType})`);
